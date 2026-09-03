@@ -104,7 +104,7 @@
             "export": "McpProxyHandler",
             "module": "$import(@zuplo/runtime/mcp-gateway)",
             "options": {
-              "rewritePattern": "$env(UPSTREAM_ECHO_MCP_URL)"
+              "rewritePattern": "${env.UPSTREAM_ECHO_MCP_URL}"
             }
           },
           "policies": {
