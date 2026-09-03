@@ -28,10 +28,17 @@ exchange.
 1. `auth0-managed-oauth` (`mcp-auth0-oauth-inbound`) — sends the caller
    through Auth0's browser login; the gateway issues its own access token
    bound to this route.
-2. `echo-tool-rbac` (`mcp-capability-filter-inbound`) — the RBAC gate. Only
-   callers whose `roles` claim includes `echo` see or can call the `echo`
-   tool; everyone else gets it filtered out of `tools/list` and blocked at
-   invocation.
+2. `echo-tool-rbac` (`mcp-capability-filter-inbound`, `accessControl.mode:
+   "function"`) — the RBAC gate. Delegates to `modules/echo-access-control.ts`,
+   which checks the caller's Auth0 Roles (surfaced via the tenant's Login
+   Action as the namespaced claim `https://zuplo.com/roles`, not the
+   default `roles` claim this policy's built-in `rolesAndGroups` mode
+   expects). A custom function, not `rolesAndGroups` + `roleClaim`, because
+   `roleClaim`'s handling of a namespaced claim that itself contains a dot
+   (`zuplo.com`) isn't documented, and a resolver we write ourselves removes
+   the ambiguity. Only callers whose Auth0 Role includes `echo` see or can
+   call the `echo` tool; everyone else gets it filtered out of `tools/list`
+   and blocked at invocation.
 
 **Policy on `/echo`**:
 
@@ -53,9 +60,18 @@ exchange.
    (`https://echo.zuplo.io`, or your own backend once you swap it in).
 3. Create a **Machine-to-Machine Application**, authorized for that API, for
    the `/echo` route's token exchange.
-4. Add an Auth0 Action (Login flow) that sets a `roles` custom claim on the
-   ID token — e.g. `["echo"]` for users who should be allowed to call the
-   echo tool. `echo-tool-rbac` reads this claim via `request.user.data.roles`.
+4. Assign Auth0 Roles (User Management > Users > [user] > Roles) to whoever
+   should be able to call `echo` — the Role must be named `echo`. Add an
+   Auth0 Action (Login flow) that forwards the user's assigned Roles onto
+   the ID token as a namespaced custom claim:
+   ```js
+   exports.onExecutePostLogin = async (event, api) => {
+     const roles = event.authorization?.roles || [];
+     api.idToken.setCustomClaim("https://zuplo.com/roles", roles);
+   };
+   ```
+   `echo-access-control.ts` reads this claim via
+   `request.user.data["https://zuplo.com/roles"]`.
 
 Copy `.env.example` to your Zuplo project's environment configuration and
 fill in the values (secrets in the secret store, not committed).

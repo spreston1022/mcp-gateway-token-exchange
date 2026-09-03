@@ -35,10 +35,13 @@
         "module": "$import(@zuplo/runtime/mcp-gateway)",
         "options": {
           "accessControl": {
-            "mode": "rolesAndGroups",
-            "roleClaim": "roles"
+            "mode": "function",
+            "identifier": {
+              "module": "$import(./modules/echo-access-control)",
+              "export": "default"
+            }
           },
-          "tools": [{ "name": "echo", "roles": ["echo"] }]
+          "tools": [{ "name": "echo" }]
         }
       }
     }
