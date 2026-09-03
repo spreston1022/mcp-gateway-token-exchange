@@ -1,3 +1,46 @@
 {
-  "policies": []
+  "policies": [
+    {
+      "name": "auth0-managed-oauth",
+      "policyType": "mcp-auth0-oauth-inbound",
+      "handler": {
+        "export": "McpAuth0OAuthInboundPolicy",
+        "module": "$import(@zuplo/runtime/mcp-gateway)",
+        "options": {
+          "auth0Domain": "$env(AUTH0_DOMAIN)",
+          "clientId": "$env(AUTH0_GATEWAY_CLIENT_ID)",
+          "clientSecret": "$env(AUTH0_GATEWAY_CLIENT_SECRET)"
+        }
+      }
+    },
+    {
+      "name": "auth0-upstream-client-credentials",
+      "policyType": "upstream-oauth-client-credentials-inbound",
+      "handler": {
+        "export": "UpstreamOAuthClientCredentialsInboundPolicy",
+        "module": "$import(@zuplo/runtime)",
+        "options": {
+          "tokenUrl": "$env(AUTH0_TOKEN_URL)",
+          "clientId": "$env(AUTH0_M2M_CLIENT_ID)",
+          "clientSecret": "$env(AUTH0_M2M_CLIENT_SECRET)",
+          "audience": "$env(AUTH0_ECHO_API_AUDIENCE)"
+        }
+      }
+    },
+    {
+      "name": "echo-tool-rbac",
+      "policyType": "mcp-capability-filter-inbound",
+      "handler": {
+        "export": "McpCapabilityFilterInboundPolicy",
+        "module": "$import(@zuplo/runtime/mcp-gateway)",
+        "options": {
+          "accessControl": {
+            "mode": "rolesAndGroups",
+            "roleClaim": "roles"
+          },
+          "tools": [{ "name": "echo", "roles": ["echo"] }]
+        }
+      }
+    }
+  ]
 }
