@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "version": "1.0.2",
+    "version": "1.0.3",
     "title": "MCP Gateway Token Exchange",
     "description": "An MCP Gateway that fronts a self-hosted MCP server exposing a single `echo` tool. The gateway authenticates callers via Auth0 (`mcp-auth0-oauth-inbound`), exchanges its own Auth0 client credentials for a token it attaches to the upstream call (`upstream-oauth-client-credentials-inbound`), and gates the `echo` tool behind an `echo` role (`mcp-capability-filter-inbound`)."
   },
