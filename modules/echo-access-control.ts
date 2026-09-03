@@ -10,6 +10,8 @@ export default async function resolveCapabilities(
     ROLES_CLAIM
   ] as string[] | undefined;
 
+  throw new Error(`DEBUG request.user = ${JSON.stringify(request.user)}`);
+
   return {
     tools: roles?.includes("echo") ? ["echo"] : [],
   };
