@@ -28,6 +28,36 @@
       }
     },
     {
+      "name": "echo-mcp-jwt-auth",
+      "policyType": "oauth-inbound",
+      "handler": {
+        "export": "Auth0JwtInboundPolicy",
+        "module": "$import(@zuplo/runtime)",
+        "options": {
+          "auth0Domain": "$env(AUTH0_DOMAIN)",
+          "audience": "$env(AUTH0_ECHO_MCP_AUDIENCE)",
+          "oAuthResourceMetadataEnabled": true
+        }
+      }
+    },
+    {
+      "name": "echo-mcp-token-exchange",
+      "policyType": "mcp-token-exchange-inbound",
+      "handler": {
+        "export": "McpTokenExchangeInboundPolicy",
+        "module": "$import(@zuplo/runtime/mcp-gateway)",
+        "options": {
+          "id": "echo-mcp-server",
+          "displayName": "Echo MCP Server",
+          "summary": "This project's own OAuth-protected upstream echo MCP server.",
+          "protectedResourceMetadataUrl": "$env(UPSTREAM_ECHO_MCP_PRM_URL)",
+          "authMode": "user-oauth",
+          "scopes": [],
+          "clientRegistration": { "mode": "auto" }
+        }
+      }
+    },
+    {
       "name": "echo-tool-rbac",
       "policyType": "mcp-capability-filter-inbound",
       "handler": {

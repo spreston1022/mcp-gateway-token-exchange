@@ -68,10 +68,25 @@
         "tags": ["Echo"]
       }
     },
+    "/internal/echo/mcp-metadata": {
+      "get": {
+        "operationId": "echoMcpProtectedResourceMetadata",
+        "summary": "Hand-rolled RFC 9728 PRM document for /internal/echo/mcp",
+        "description": "McpGatewayPlugin claims the whole /.well-known/oauth-protected-resource/* wildcard project-wide and rejects any route it doesn't itself manage (Unknown MCP route), so a same-project mcpServerHandler upstream can't publish its own discovery document at the conventional well-known path. This serves the same RFC 9728 shape manually, at a path that doesn't collide, so echo-mcp-token-exchange's protectedResourceMetadataUrl override has somewhere real to fetch.",
+        "x-zuplo-route": {
+          "corsPolicy": "none",
+          "handler": {
+            "module": "$import(./modules/echo-mcp-prm)",
+            "export": "default"
+          }
+        },
+        "tags": ["Echo"]
+      }
+    },
     "/internal/echo/mcp": {
       "post": {
         "summary": "Upstream echo MCP server",
-        "description": "The real MCP server exposing the `echo` tool: translates a `tools/call` for `echo` into the `/echo` API call, which forwards to https://echo.zuplo.io. Same-project, same-trust-boundary hop from `/mcp` — no separate credential needed here; the token exchange happens one hop further out, on `/echo`, for the call to the external echo.zuplo.io service.",
+        "description": "The real MCP server exposing the `echo` tool: translates a `tools/call` for `echo` into the `/echo` API call, which forwards to https://echo.zuplo.io. This is now a genuine OAuth-protected upstream (its own Auth0 audience) so the gateway's `mcp-token-exchange-inbound` policy on `/mcp` has a real per-user credential relationship to broker -- not just a same-trust-boundary passthrough.",
         "operationId": "echoMcpServer",
         "x-zuplo-route": {
           "corsPolicy": "none",
@@ -88,6 +103,9 @@
                 }
               ]
             }
+          },
+          "policies": {
+            "inbound": ["echo-mcp-jwt-auth"]
           }
         },
         "tags": ["Echo"]
@@ -96,7 +114,7 @@
     "/mcp": {
       "get,post": {
         "summary": "MCP Gateway",
-        "description": "Public entry point for MCP clients. Authenticates the caller via Auth0 browser login and only exposes/allows the `echo` tool to callers whose `roles` claim includes `echo`.",
+        "description": "Public entry point for MCP clients. Authenticates the caller via Auth0 browser login, performs a real per-user OAuth token exchange for the upstream echo MCP server, and only exposes/allows the `echo` tool to callers whose `roles` claim includes `echo`.",
         "operationId": "mcpGateway",
         "x-zuplo-route": {
           "corsPolicy": "none",
@@ -108,7 +126,7 @@
             }
           },
           "policies": {
-            "inbound": ["auth0-managed-oauth", "echo-tool-rbac"]
+            "inbound": ["auth0-managed-oauth", "echo-mcp-token-exchange", "echo-tool-rbac"]
           }
         },
         "tags": ["Echo"]

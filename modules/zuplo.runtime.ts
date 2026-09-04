@@ -1,5 +1,9 @@
 import { OpenTelemetryPlugin } from "@zuplo/otel";
-import { environment, type RuntimeExtensions } from "@zuplo/runtime";
+import {
+  environment,
+  OAuthProtectedResourcePlugin,
+  type RuntimeExtensions,
+} from "@zuplo/runtime";
 import { McpGatewayPlugin } from "@zuplo/runtime/mcp-gateway";
 
 /**
@@ -16,6 +20,18 @@ export function runtimeInit(runtime: RuntimeExtensions) {
   //
   // Remove this plugin if you are not using the MCP Gateway features.
   runtime.addPlugin(new McpGatewayPlugin());
+
+  // --- OAuth Protected Resource metadata for /internal/echo/mcp ------------
+  // Required so the /mcp gateway's mcp-token-exchange-inbound policy (and any
+  // other MCP client) can discover how to authenticate against the upstream
+  // echo MCP server as a genuine, separately OAuth-protected resource.
+  // Docs: https://zuplo.com/docs/programmable-api/oauth-protected-resource-plugin
+  runtime.addPlugin(
+    new OAuthProtectedResourcePlugin({
+      authorizationServers: [`https://${environment.AUTH0_DOMAIN}`],
+      resourceName: "Echo MCP Server",
+    })
+  );
 
   // --- OpenTelemetry tracing (optional) ------------------------------------
   // Send traces to Zuplo's built-in tracing. This can also be configured to
