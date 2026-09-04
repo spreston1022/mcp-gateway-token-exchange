@@ -3,7 +3,7 @@
   "info": {
     "version": "1.0.3",
     "title": "MCP Gateway Token Exchange",
-    "description": "An MCP Gateway that fronts a self-hosted MCP server exposing a single `echo` tool. The gateway authenticates callers via Auth0 (`mcp-auth0-oauth-inbound`), exchanges its own Auth0 client credentials for a token it attaches to the upstream call (`upstream-oauth-client-credentials-inbound`), and gates the `echo` tool behind an `echo` role (`mcp-capability-filter-inbound`)."
+    "description": "An MCP Gateway that fronts a self-hosted MCP server exposing a single `echo` tool. The gateway authenticates callers via Auth0 browser login (`mcp-auth0-oauth-inbound`), performs a real per-user OAuth token exchange to call the upstream MCP server with a token scoped to that upstream (`mcp-token-exchange-inbound`), and gates the `echo` tool behind an `echo` role (`mcp-capability-filter-inbound`). The upstream MCP server calls the downstream echo service using its own service-to-service credentials (`upstream-oauth-client-credentials-inbound`)."
   },
   "paths": {
     "/echo": {
@@ -72,7 +72,7 @@
       "get": {
         "operationId": "echoMcpProtectedResourceMetadata",
         "summary": "Hand-rolled RFC 9728 PRM document for /internal/echo/mcp",
-        "description": "McpGatewayPlugin claims the whole /.well-known/oauth-protected-resource/* wildcard project-wide and rejects any route it doesn't itself manage (Unknown MCP route), so a same-project mcpServerHandler upstream can't publish its own discovery document at the conventional well-known path. This serves the same RFC 9728 shape manually, at a path that doesn't collide, so echo-mcp-token-exchange's protectedResourceMetadataUrl override has somewhere real to fetch.",
+        "description": "Protected Resource Metadata (RFC 9728) for the upstream MCP server at /internal/echo/mcp. McpGatewayPlugin serves this document at the conventional well-known path for the routes it manages directly (the client-facing /mcp route); this same-project upstream publishes its own copy here instead, at a project-specific path, so echo-mcp-token-exchange's protectedResourceMetadataUrl option has a document to fetch for it.",
         "x-zuplo-route": {
           "corsPolicy": "none",
           "handler": {
@@ -86,7 +86,7 @@
     "/internal/echo/mcp": {
       "post": {
         "summary": "Upstream echo MCP server",
-        "description": "The real MCP server exposing the `echo` tool: translates a `tools/call` for `echo` into the `/echo` API call, which forwards to https://echo.zuplo.io. This is now a genuine OAuth-protected upstream (its own Auth0 audience) so the gateway's `mcp-token-exchange-inbound` policy on `/mcp` has a real per-user credential relationship to broker -- not just a same-trust-boundary passthrough.",
+        "description": "The MCP server exposing the `echo` tool: translates a `tools/call` for `echo` into the `/echo` API call, which forwards to https://echo.zuplo.io. It's a genuine OAuth-protected upstream, with its own Auth0 audience, so the gateway's `mcp-token-exchange-inbound` policy on `/mcp` has a real per-user credential relationship to broker.",
         "operationId": "echoMcpServer",
         "x-zuplo-route": {
           "corsPolicy": "none",

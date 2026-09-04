@@ -1,26 +1,28 @@
 ## MCP Gateway Token Exchange
 
 An MCP Gateway fronting a self-hosted MCP server with a single `echo` tool,
-gated by RBAC, that reaches its downstream API through an Auth0 token
-exchange.
+gated by RBAC, that reaches it through a real per-user OAuth token exchange
+— and that upstream server reaches its own downstream API through a second,
+service-to-service exchange.
 
-**Three hops, three trust boundaries**
+**Three hops, two token exchanges**
 
 - `GET,POST /mcp` — the public MCP Gateway entry point (`McpProxyHandler`).
   MCP clients (Claude Desktop, Claude Code, Cursor, ...) connect here. Auth0
   browser login happens on this hop.
-- `GET,POST /internal/echo/mcp` — the real MCP server (`mcpServerHandler`)
-  that translates a `tools/call` for `echo` into a call to `/echo`. Same
-  project, same trust boundary as `/mcp` — no separate credential on this
-  hop.
+- `GET,POST /internal/echo/mcp` — the upstream MCP server (`mcpServerHandler`)
+  that translates a `tools/call` for `echo` into a call to `/echo`. It's a
+  genuine OAuth-protected resource with its own Auth0 audience: `/mcp`
+  exchanges the caller's token for one scoped to this audience
+  (`mcp-token-exchange-inbound`) before calling it — a real per-user
+  credential, not a shared session.
 - `POST /echo` — forwards (`urlForwardHandler`) to Zuplo's public echo
   service at `https://echo.zuplo.io`, a reflector that echoes back whatever
-  it receives, including headers. **This is where the Auth0 token exchange
-  happens** — the credential the MCP server needs to call a downstream API
-  it doesn't share a trust boundary with. Since echo.zuplo.io just reflects
-  requests back, the exchanged token is visible in the response's
-  `headers.authorization` — handy for confirming the exchange actually
-  happened. Point this at your own Auth0-checked backend for a real
+  it receives, including headers. This hop uses a second, service-to-service
+  token exchange (client credentials) to reach it. Since echo.zuplo.io just
+  reflects requests back, both exchanged tokens are visible end-to-end in the
+  response's `headers.authorization` — handy for confirming the exchange
+  actually happened. Point this at your own Auth0-checked backend for a real
   deployment.
 
 **Policy chain on `/mcp`**:
@@ -28,52 +30,46 @@ exchange.
 1. `auth0-managed-oauth` (`mcp-auth0-oauth-inbound`) — sends the caller
    through Auth0's browser login; the gateway issues its own access token
    bound to this route.
-2. `echo-tool-rbac` (`mcp-capability-filter-inbound`, `accessControl.mode:
-   "rolesAndGroups"`, default `roleClaim`) — the RBAC gate. `mcp-auth0-oauth-inbound`
-   normalizes the caller's Auth0 Roles onto `request.user.data.roles` as a
-   plain array itself — regardless of whether the tenant's Login Action
-   stamped them onto the ID token under a namespaced claim like
-   `https://zuplo.com/roles`. (An earlier version of this policy pointed a
-   custom resolver at that namespaced claim directly on `request.user.data`
-   — that claim doesn't actually land there; `request.user.data.roles` is
-   already the normalized, correct property.) Only callers whose Auth0 Role
-   includes `echo` see or can call the `echo` tool; everyone else gets it
-   filtered out of `tools/list` and blocked at invocation.
+2. `echo-mcp-token-exchange` (`mcp-token-exchange-inbound`, `authMode:
+   "user-oauth"`) — exchanges the caller's token for one scoped to
+   `/internal/echo/mcp`'s Auth0 audience, using the gateway's own client
+   credentials (`clientRegistration.mode: "manual"`).
+3. `echo-tool-rbac` (`mcp-capability-filter-inbound`, `accessControl.mode:
+   "rolesAndGroups"`) — the RBAC gate. `mcp-auth0-oauth-inbound` normalizes
+   the caller's Auth0 Roles onto `request.user.data.roles` as a plain array,
+   regardless of which claim name the tenant's Login Action used. Only
+   callers whose Auth0 Role includes `echo` see or can call the `echo` tool.
 
-**Policy on `/echo`**:
+**Policy on `/internal/echo/mcp`**: `echo-mcp-jwt-auth` (`oauth-inbound`) —
+validates the exchanged token against this audience.
 
-1. `auth0-upstream-client-credentials`
-   (`upstream-oauth-client-credentials-inbound`) — the token exchange: a
-   client-credentials grant against Auth0 (`AUTH0_TOKEN_URL`,
-   `AUTH0_M2M_CLIENT_ID`/`SECRET`, audience `AUTH0_ECHO_API_AUDIENCE`),
-   attached as the `Authorization` header before forwarding to
-   `echo.zuplo.io`.
+**Policy on `/echo`**: `auth0-upstream-client-credentials`
+(`upstream-oauth-client-credentials-inbound`) — a client-credentials grant
+against Auth0 (`AUTH0_TOKEN_URL`, `AUTH0_M2M_CLIENT_ID`/`SECRET`, audience
+`AUTH0_ECHO_API_AUDIENCE`), attached as the `Authorization` header.
 
 **Auth0 setup required**
 
-1. Create a **Regular Web Application** ("Zuplo MCP Gateway") for the
-   browser-login leg. Allow-list `https://<gateway-host>/__zuplo/oauth/callback`
-   (and the `localhost:9001` variant for local dev) as a callback URL — no
-   API/audience needed for this app, it's identity-only.
-2. Create an **API** (Applications > APIs) with an identifier matching
-   `AUTH0_ECHO_API_AUDIENCE` — representing the downstream echo service
-   (`https://echo.zuplo.io`, or your own backend once you swap it in).
-3. Create a **Machine-to-Machine Application**, authorized for that API, for
-   the `/echo` route's token exchange.
-4. Assign Auth0 Roles (User Management > Users > [user] > Roles) to whoever
-   should be able to call `echo` — the Role must be named `echo`. An Auth0
-   Action (Login flow) that forwards the user's assigned Roles onto the ID
-   token is needed for `event.authorization.roles` to reach Auth0 at all —
-   e.g.
+1. **Regular Web Application** ("Zuplo MCP Gateway") for browser login.
+   Allow-list `https://<gateway-host>/__zuplo/oauth/callback` as a callback
+   URL — identity-only, no API/audience needed.
+2. **API** with identifier matching `AUTH0_ECHO_MCP_AUDIENCE` — represents
+   `/internal/echo/mcp`. Authorize the gateway app (from step 1) to access it.
+3. **API** with identifier matching `AUTH0_ECHO_API_AUDIENCE` — represents
+   the downstream echo service.
+4. **Machine-to-Machine Application**, authorized for the API from step 3,
+   for the `/echo` hop's token exchange.
+5. Assign Auth0 Roles to whoever should call `echo` — Role name must be
+   `echo`. Requires a Login Action that forwards assigned Roles onto the ID
+   token, e.g.:
    ```js
    exports.onExecutePostLogin = async (event, api) => {
      const roles = event.authorization?.roles || [];
      api.idToken.setCustomClaim("https://zuplo.com/roles", roles);
    };
    ```
-   The exact claim name/namespace the Action uses doesn't matter to this
-   project — `mcp-auth0-oauth-inbound` normalizes it onto
-   `request.user.data.roles` regardless.
+   The exact claim name doesn't matter — `mcp-auth0-oauth-inbound`
+   normalizes it onto `request.user.data.roles` regardless.
 
 Copy `.env.example` to your Zuplo project's environment configuration and
 fill in the values (secrets in the secret store, not committed).
